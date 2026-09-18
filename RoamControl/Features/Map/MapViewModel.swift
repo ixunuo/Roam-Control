@@ -72,8 +72,8 @@ final class MapViewModel: NSObject, MKLocalSearchCompleterDelegate {
     func selectDroppedPin(at coordinate: CLLocationCoordinate2D) async {
         await selectCoordinate(
             coordinate,
-            fallbackName: "Dropped Pin",
-            fallbackDescription: "Selected from the map",
+            fallbackName: LocalizedText.text("Dropped Pin"),
+            fallbackDescription: LocalizedText.text("Selected from the map"),
             recenter: false
         )
     }
@@ -89,15 +89,15 @@ final class MapViewModel: NSObject, MKLocalSearchCompleterDelegate {
             resetSearchField()
             await selectCoordinate(
                 coordinate,
-                fallbackName: "Entered Location",
-                fallbackDescription: "Entered using coordinates",
+                fallbackName: LocalizedText.text("Entered Location"),
+                fallbackDescription: LocalizedText.text("Entered using coordinates"),
                 recenter: true
             )
             isSearching = false
             return
         case .invalid:
             searchSuggestions = []
-            errorMessage = "Enter latitude from −90 to 90 and longitude from −180 to 180."
+            errorMessage = LocalizedText.text("Enter latitude from −90 to 90 and longitude from −180 to 180.")
             return
         case .notCoordinates:
             break
@@ -204,7 +204,7 @@ final class MapViewModel: NSObject, MKLocalSearchCompleterDelegate {
         do {
             let response = try await MKLocalSearch(request: request).start()
             guard let item = response.mapItems.first else {
-                errorMessage = "No matching place found."
+                errorMessage = LocalizedText.text("No matching place found.")
                 return
             }
 
@@ -227,7 +227,7 @@ final class MapViewModel: NSObject, MKLocalSearchCompleterDelegate {
         } catch is CancellationError {
             return
         } catch {
-            errorMessage = "Search is unavailable right now."
+            errorMessage = LocalizedText.text("Search is unavailable right now.")
         }
     }
 
@@ -240,7 +240,7 @@ final class MapViewModel: NSObject, MKLocalSearchCompleterDelegate {
         errorMessage = nil
         let pendingTarget = LocationTarget(
             name: fallbackName,
-            subtitle: "Finding nearby address…",
+            subtitle: LocalizedText.text("Finding nearby address…"),
             latitude: coordinate.latitude,
             longitude: coordinate.longitude
         )
@@ -362,7 +362,7 @@ final class MapViewModel: NSObject, MKLocalSearchCompleterDelegate {
                 return detail
             }
         }
-        return "Location details unavailable"
+        return LocalizedText.text("Location details unavailable")
     }
 
     private func requestCurrentLocation(
@@ -413,7 +413,7 @@ final class MapViewModel: NSObject, MKLocalSearchCompleterDelegate {
         case .denied, .restricted:
             isFindingRealLocation = false
             if recenter && shouldReportLocationErrors {
-                errorMessage = "Allow Location access in Settings to show your real position."
+                errorMessage = LocalizedText.text("Allow Location access in Settings to show your real position.")
             }
         @unknown default:
             break
@@ -444,9 +444,13 @@ final class MapViewModel: NSObject, MKLocalSearchCompleterDelegate {
     }
 
     private func center(on location: CLLocation) {
+        // CoreLocation reports WGS-84, while Apple Maps draws mainland China in
+        // GCJ-02. The camera is moved onto the map's own position so it agrees
+        // with the user-location dot MapKit draws.
+        let coordinate = ChinaCoordinateConverter.wgs84ToGcj02(location.coordinate)
         cameraPosition = .region(
             MKCoordinateRegion(
-                center: location.coordinate,
+                center: coordinate,
                 span: MKCoordinateSpan(latitudeDelta: 0.025, longitudeDelta: 0.025)
             )
         )
@@ -488,7 +492,7 @@ extension MapViewModel: CLLocationManagerDelegate {
                 if recenterOnNextRealLocation {
                     recenterOnNextRealLocation = false
                     if shouldReportLocationErrors {
-                        errorMessage = "Allow Location access in Settings to show your real position."
+                        errorMessage = LocalizedText.text("Allow Location access in Settings to show your real position.")
                     }
                 }
             case .notDetermined:
@@ -524,7 +528,7 @@ extension MapViewModel: CLLocationManagerDelegate {
             if recenterOnNextRealLocation {
                 recenterOnNextRealLocation = false
                 if shouldReportLocationErrors {
-                    errorMessage = "Your real location is not available yet."
+                    errorMessage = LocalizedText.text("Your real location is not available yet.")
                 }
             }
         }

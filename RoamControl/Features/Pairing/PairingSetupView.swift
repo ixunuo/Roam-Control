@@ -169,7 +169,9 @@ struct PairingSetupView: View {
                     .foregroundStyle(.blue)
                     .minimumScaleFactor(0.7)
                     .lineLimit(1)
-                    .accessibilityLabel("Pairing code \(pin)")
+                    .accessibilityLabel(
+                        LocalizedText.format("Pairing code %@", pin.map(String.init).joined(separator: " "))
+                    )
                 Text("The code is generated on this iPhone and expires with this pairing attempt.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -245,13 +247,13 @@ struct PairingSetupView: View {
                 .frame(width: 24, height: 24)
                 .background(.blue, in: Circle())
 
-            Text(text)
+            Text(LocalizedText.text(text))
                 .font(.subheadline)
                 .padding(.top, 2)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Step \(number). \(text)")
+        .accessibilityLabel(LocalizedText.format("Step %@. %@", number, LocalizedText.text(text)))
     }
 
     private func instructionRow(_ text: String) -> some View {
@@ -260,12 +262,12 @@ struct PairingSetupView: View {
                 .font(.caption.bold())
                 .foregroundStyle(.blue)
                 .padding(.top, 3)
-            Text(text)
+            Text(LocalizedText.text(text))
                 .font(.subheadline)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(text)
+        .accessibilityLabel(LocalizedText.text(text))
     }
 
     private func pairingDetail(
@@ -276,7 +278,7 @@ struct PairingSetupView: View {
         Group {
             if dynamicTypeSize.isAccessibilitySize {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(title)
+                    Text(LocalizedText.text(title))
                         .foregroundStyle(.secondary)
                     Text(value)
                         .textSelection(.enabled)
@@ -285,12 +287,12 @@ struct PairingSetupView: View {
                 .font(monospaced ? .caption.monospaced() : .caption)
                 .frame(maxWidth: .infinity, alignment: .leading)
             } else {
-                LabeledContent(title, value: value)
+                LabeledContent(LocalizedText.text(title), value: value)
                     .font(monospaced ? .caption.monospaced() : .caption)
             }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(title), \(value)")
+        .accessibilityLabel(LocalizedText.format("%@, %@", LocalizedText.text(title), value))
     }
 
     private var allowedPairingTypes: [UTType] {
@@ -345,55 +347,55 @@ struct PairingSetupView: View {
 
     private var statusTitle: String {
         switch appModel.onDevicePairing.phase {
-        case .preparing: return "Preparing pairing"
-        case .waitingForSettings: return "Ready in Settings"
-        case .showingPIN: return "Pairing code ready"
-        case .storing: return "Finishing pairing"
-        case .cancelling: return "Stopping pairing"
-        case .failed: return "Pairing problem"
+        case .preparing: return LocalizedText.text("Preparing pairing")
+        case .waitingForSettings: return LocalizedText.text("Ready in Settings")
+        case .showingPIN: return LocalizedText.text("Pairing code ready")
+        case .storing: return LocalizedText.text("Finishing pairing")
+        case .cancelling: return LocalizedText.text("Stopping pairing")
+        case .failed: return LocalizedText.text("Pairing problem")
         case .idle, .success: break
         }
 
         switch appModel.pairingStatus {
-        case .checking: return "Checking this iPhone"
-        case .importing: return "Checking pairing file"
-        case .notPaired: return "Pairing required"
-        case .paired: return "Pairing file ready"
-        case .failed: return "Pairing problem"
+        case .checking: return LocalizedText.text("Checking this iPhone")
+        case .importing: return LocalizedText.text("Checking pairing file")
+        case .notPaired: return LocalizedText.text("Pairing required")
+        case .paired: return LocalizedText.text("Pairing file ready")
+        case .failed: return LocalizedText.text("Pairing problem")
         }
     }
 
     private var statusMessage: String {
         switch appModel.onDevicePairing.phase {
         case .preparing:
-            return "Starting a private session on this iPhone."
+            return LocalizedText.text("Starting a private session on this iPhone.")
         case .waitingForSettings:
-            return "Roam Control is visible to the iOS pairing screen."
+            return LocalizedText.text("Roam Control is visible to the iOS pairing screen.")
         case .showingPIN:
-            return "Enter the six-digit code in Settings to confirm."
+            return LocalizedText.text("Enter the six-digit code in Settings to confirm.")
         case .storing:
-            return "The handshake worked. Saving its keys securely."
+            return LocalizedText.text("The handshake worked. Saving its keys securely.")
         case .cancelling:
-            return "Closing the local session and advertisement."
+            return LocalizedText.text("Closing the local session and advertisement.")
         case .failed(let message):
-            return message
+            return LocalizedText.text(message)
         case .idle, .success:
             break
         }
 
         switch appModel.pairingStatus {
         case .checking:
-            return "Looking for a securely stored pairing record."
+            return LocalizedText.text("Looking for a securely stored pairing record.")
         case .importing:
-            return "Validating the record and its keys."
+            return LocalizedText.text("Validating the record and its keys.")
         case .notPaired:
             return appModel.onDevicePairing.isAvailableOnThisDevice
-                ? "Create the pairing securely on this iPhone, or import an existing file."
-                : "Connect your physical iPhone to create the pairing, or import an existing file."
+                ? LocalizedText.text("Create the pairing securely on this iPhone, or import an existing file.")
+                : LocalizedText.text("Connect your physical iPhone to create the pairing, or import an existing file.")
         case .paired:
-            return "Roam Control can use this record when the LocalDevVPN session layer is connected."
+            return LocalizedText.text("Roam Control can use this record when the LocalDevVPN session layer is connected.")
         case .failed(let message):
-            return message
+            return LocalizedText.text(message)
         }
     }
 }

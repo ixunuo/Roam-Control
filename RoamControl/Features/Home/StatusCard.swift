@@ -22,21 +22,21 @@ struct StatusCard: View {
 
     private var title: String {
         switch state {
-        case .notConfigured: "Not configured"
-        case .ready: "Ready"
-        case .connecting: "Connecting"
-        case .active: "Location session active"
-        case .failed: "Connection error"
+        case .notConfigured: LocalizedText.text("Not configured")
+        case .ready: LocalizedText.text("Ready")
+        case .connecting: LocalizedText.text("Connecting")
+        case .active: LocalizedText.text("Location session active")
+        case .failed: LocalizedText.text("Connection error")
         }
     }
 
     private var detail: String {
         switch state {
-        case .notConfigured: "Pairing support has not been added yet."
-        case .ready: "The paired device is available."
-        case .connecting: "Roam Control is preparing the secure device session."
-        case .active: "Roam Control is controlling the session."
-        case .failed(let message): message
+        case .notConfigured: LocalizedText.text("Pairing support has not been added yet.")
+        case .ready: LocalizedText.text("The paired device is available.")
+        case .connecting: LocalizedText.text("Roam Control is preparing the secure device session.")
+        case .active: LocalizedText.text("Roam Control is controlling the session.")
+        case .failed(let message): LocalizedText.text(message)
         }
     }
 

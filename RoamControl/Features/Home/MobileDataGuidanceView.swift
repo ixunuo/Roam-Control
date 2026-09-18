@@ -138,22 +138,22 @@ struct MobileDataGuidanceView: View {
     private var title: String {
         switch guidance {
         case .connectionHelp:
-            "Still Connecting"
+            LocalizedText.text("Still Connecting")
         case .turnOff:
-            "Turn Mobile Data Off"
+            LocalizedText.text("Turn Mobile Data Off")
         case .turnBackOn:
-            "Turn Mobile Data Back On"
+            LocalizedText.text("Turn Mobile Data Back On")
         }
     }
 
     private var message: String {
         switch guidance {
         case .connectionHelp:
-            "If you're on Wi‑Fi, make sure LocalDevVPN says Connected, then try again. Choose mobile data only when you're actually using 4G or 5G."
+            LocalizedText.text("If you're on Wi‑Fi, make sure LocalDevVPN says Connected, then try again. Choose mobile data only when you're actually using 4G or 5G.")
         case .turnOff:
-            "Make sure LocalDevVPN is connected, switch mobile data off briefly, then return to Roam Control."
+            LocalizedText.text("Make sure LocalDevVPN is connected, switch mobile data off briefly, then return to Roam Control.")
         case .turnBackOn:
-            "The secure location session is ready. You can restore mobile data now; spoofing will continue over 5G."
+            LocalizedText.text("The secure location session is ready. You can restore mobile data now; spoofing will continue over 5G.")
         }
     }
 

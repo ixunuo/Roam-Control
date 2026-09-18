@@ -1,4 +1,5 @@
 import BackgroundTasks
+import CoreLocation
 import Foundation
 import Network
 import Observation
@@ -41,9 +42,20 @@ final class LocalDeviceSessionCoordinator: NSObject {
         let authTag: String
     }
 
+    private enum MobileDataShortcut: Equatable {
+        case turnOff
+        case turnOn
+    }
+
     private static let localDevVPNPeerAddress = "10.7.0.1"
-    private static let enableURL = URL(string: "localdevvpn://enable?scheme=roamcontrol")!
     private static let minimumRestorationDisplayDuration: TimeInterval = 1.2
+    private static let localNetworkRetryLimit = 8
+    private static let localNetworkRetryDelay: TimeInterval = 2
+    private static let localDevVPNWaitRestartLimit = 9
+    private static let localDevVPNWaitStallInterval: TimeInterval = 3
+    private static let localDevVPNWaitTickInterval: TimeInterval = 1
+    private static let mobileDataShortcutRetryLimit = 5
+    private static let mobileDataShortcutRetryDelay: TimeInterval = 1
 
     private(set) var phase: DeviceSessionPhase = .idle {
         didSet {
@@ -76,6 +88,7 @@ final class LocalDeviceSessionCoordinator: NSObject {
         )
     }
     var onConnectionEvent: ((UsageAnalyticsEvent) -> Void)?
+    var onMobileDataGuidanceAutoDismissed: (() -> Void)?
     private var retryTelemetry = ConnectionRetryTelemetry()
     private var vpnReturnRetryUsed = false
     private var vpnReturnRetryTask: Task<Void, Never>?
@@ -89,6 +102,11 @@ final class LocalDeviceSessionCoordinator: NSObject {
     var onRecoveryNeeded: ((FailureDiagnosticSnapshot) -> Void)?
     private var terminalFailureReported = false
     var onFailure: ((FailureDiagnosticSnapshot) -> Void)?
+
+    private func deviceCoordinates(for target: LocationTarget) -> CLLocationCoordinate2D {
+        guard correctsMainlandChinaCoordinates else { return target.coordinate }
+        return ChinaCoordinateConverter.gcj02ToWgs84(target.coordinate)
+    }
 
     private func failureSnapshot(
         stage: FailureStage,
@@ -105,10 +123,20 @@ final class LocalDeviceSessionCoordinator: NSObject {
 
     var onPhaseChange: ((DeviceSessionPhase) -> Void)?
 
+    /// Targets are held in the map's own coordinate space. In mainland China
+    /// that space is GCJ-02, so the value has to be moved back onto WGS-84
+    /// before a device is asked to report it.
+    var correctsMainlandChinaCoordinates = true
+
     private let browser = NetServiceBrowser()
     private let wifiPathMonitor = NWPathMonitor(requiredInterfaceType: .wifi)
     private let wifiPathMonitorQueue = DispatchQueue(
         label: "com.sean.roamcontrol.wifi-path",
+        qos: .utility
+    )
+    private let cellularPathMonitor = NWPathMonitor(requiredInterfaceType: .cellular)
+    private let cellularPathMonitorQueue = DispatchQueue(
+        label: "com.sean.roamcontrol.cellular-path",
         qos: .utility
     )
     private let serviceProbeQueue = DispatchQueue(
@@ -117,10 +145,14 @@ final class LocalDeviceSessionCoordinator: NSObject {
     )
     private var discoveredServices: [NetService] = []
     private var discoveryTimeout: Task<Void, Never>?
+    private var localNetworkRetryTask: Task<Void, Never>?
+    private var localNetworkRetryCount = 0
+    private var awaitingLocalNetworkRetry = false
     private var automaticDiscoveryTask: Task<Void, Never>?
     private var networkDecisionTask: Task<Void, Never>?
     private var mobileDataDiscoveryLoopTask: Task<Void, Never>?
     private var mobileDataGuidanceDelay: Task<Void, Never>?
+    private var vpnWaitDiscoveryTask: Task<Void, Never>?
     private var localDevVPNProbeTask: Task<Void, Never>?
     private var localDevVPNReturnTimeout: Task<Void, Never>?
     private var pendingSession: PendingSession?
@@ -130,7 +162,11 @@ final class LocalDeviceSessionCoordinator: NSObject {
     private var hasRequestedLocalDevVPNThisAttempt = false
     private var wifiPathStatusIsKnown = false
     private var isWiFiPathSatisfied = false
+    private var isCellularPathSatisfied = false
+    private var sawCellularPathUnavailable = false
     private var isMobileDataStartupMode = false
+    private var lastMobileDataShortcutRequest: MobileDataShortcut?
+    private var mobileDataShortcutRetryTask: Task<Void, Never>?
     private var serviceProbeConnection: NWConnection?
     private var serviceProbeTimeout: Task<Void, Never>?
     private var serviceProbeRetryTask: Task<Void, Never>?
@@ -160,6 +196,20 @@ final class LocalDeviceSessionCoordinator: NSObject {
             }
         }
         wifiPathMonitor.start(queue: wifiPathMonitorQueue)
+        cellularPathMonitor.pathUpdateHandler = { [weak self] path in
+            let isSatisfied = path.status == .satisfied
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                if isSatisfied {
+                    self.isCellularPathSatisfied = true
+                    self.considerAutoDismissingMobileDataGuidance()
+                } else {
+                    self.isCellularPathSatisfied = false
+                    self.sawCellularPathUnavailable = true
+                }
+            }
+        }
+        cellularPathMonitor.start(queue: cellularPathMonitorQueue)
     }
 
     var isBusy: Bool {
@@ -223,7 +273,12 @@ final class LocalDeviceSessionCoordinator: NSObject {
             let pendingSession
         else { return .unavailable }
 
-        guard rc_location_session_update(activeSession, target.latitude, target.longitude) == 0 else {
+        let deviceTarget = deviceCoordinates(for: target)
+        guard rc_location_session_update(
+            activeSession,
+            deviceTarget.latitude,
+            deviceTarget.longitude
+        ) == 0 else {
             fail("Roam Control could not update the active location.")
             return .failed
         }
@@ -243,12 +298,7 @@ final class LocalDeviceSessionCoordinator: NSObject {
             return
         }
 
-        UIApplication.shared.open(Self.enableURL) { [weak self] opened in
-            guard !opened else { return }
-            Task { @MainActor in
-                self?.fail("Install LocalDevVPN before starting a location session.")
-            }
-        }
+        openLocalDevVPNShortcut()
 #endif
     }
 
@@ -285,9 +335,13 @@ final class LocalDeviceSessionCoordinator: NSObject {
 
     func appDidBecomeActive() {
         if
-            phase == .openingLocalDevVPN,
             pendingSession != nil,
-            !workerIsRunning
+            !workerIsRunning,
+            resolvedService == nil,
+            phase == .openingLocalDevVPN
+                || (phase == .discovering
+                    && hasRequestedLocalDevVPNThisAttempt
+                    && !isMobileDataStartupMode)
         {
             automaticDiscoveryTask?.cancel()
             automaticDiscoveryTask = Task { @MainActor [weak self] in
@@ -296,8 +350,9 @@ final class LocalDeviceSessionCoordinator: NSObject {
                     !Task.isCancelled,
                     let self,
                     self.pendingSession != nil,
-                    self.phase == .openingLocalDevVPN,
-                    !self.workerIsRunning
+                    !self.workerIsRunning,
+                    self.resolvedService == nil,
+                    self.phase == .openingLocalDevVPN || self.phase == .discovering
                 else { return }
 
                 self.automaticDiscoveryTask = nil
@@ -310,8 +365,26 @@ final class LocalDeviceSessionCoordinator: NSObject {
             return
         }
 
-        guard mobileDataGuidance == .turnOff else { return }
-        startMobileDataDiscoveryLoop()
+        if mobileDataGuidance == .turnOff {
+            runMobileDataShortcut(.turnOff)
+            awaitingLocalNetworkRetry = false
+            startMobileDataDiscoveryLoop()
+            return
+        }
+
+        if mobileDataGuidance == .turnBackOn {
+            runMobileDataShortcut(.turnOn)
+            considerAutoDismissingMobileDataGuidance()
+            return
+        }
+
+        if awaitingLocalNetworkRetry {
+            awaitingLocalNetworkRetry = false
+            scheduleLocalNetworkRetry()
+            return
+        }
+
+        restoreMobileDataIfNeeded()
     }
 
     func stop() {
@@ -449,6 +522,43 @@ final class LocalDeviceSessionCoordinator: NSObject {
         }
     }
 
+    // iOS refuses Bonjour browsing while the Local Network privilege is
+    // undetermined: silently when the app is in the background, and often for
+    // the very operation that raises the system alert. Retry instead of
+    // failing, so answering the alert is enough to recover.
+    private func handleSearchFailure() {
+        guard pendingSession != nil, !workerIsRunning, phase == .discovering else { return }
+        guard UIApplication.shared.applicationState == .active else {
+            awaitingLocalNetworkRetry = true
+            localNetworkRetryCount = 0
+            localNetworkRetryTask?.cancel()
+            localNetworkRetryTask = nil
+            return
+        }
+        guard localNetworkRetryCount < Self.localNetworkRetryLimit else {
+            fail("Local Network access is required to find this iPhone.")
+            return
+        }
+        localNetworkRetryCount += 1
+        scheduleLocalNetworkRetry()
+    }
+
+    private func scheduleLocalNetworkRetry() {
+        localNetworkRetryTask?.cancel()
+        localNetworkRetryTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(Self.localNetworkRetryDelay))
+            guard
+                !Task.isCancelled,
+                let self,
+                self.pendingSession != nil,
+                !self.workerIsRunning,
+                self.phase == .discovering
+            else { return }
+            self.localNetworkRetryTask = nil
+            self.beginDiscovery(reportTimeout: false)
+        }
+    }
+
     private func resolve(_ service: NetService) {
         service.delegate = self
         service.includesPeerToPeer = true
@@ -567,6 +677,7 @@ final class LocalDeviceSessionCoordinator: NSObject {
         let contextBits = UInt(bitPattern: Unmanaged.passRetained(self).toOpaque())
         let pairingRecord = pendingSession.pairingRecord
         let target = pendingSession.target
+        let deviceTarget = deviceCoordinates(for: target)
         let peerAddressString = Self.localDevVPNPeerAddress
 
         DispatchQueue.global(qos: .userInitiated).async {
@@ -592,8 +703,8 @@ final class LocalDeviceSessionCoordinator: NSObject {
                                 resolvedService.port,
                                 serviceIdentifier,
                                 authTag,
-                                target.latitude,
-                                target.longitude,
+                                deviceTarget.latitude,
+                                deviceTarget.longitude,
                                 locationStartedCallback,
                                 context,
                                 &result
@@ -629,6 +740,20 @@ final class LocalDeviceSessionCoordinator: NSObject {
         }
         if mobileDataGuidance == .turnOff {
             mobileDataGuidance = .turnBackOn
+        }
+        if lastMobileDataShortcutRequest == .turnOff {
+            // Let the freshly started session settle before asking Shortcuts
+            // to switch data back on, so the request does not race the
+            // session start.
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(1))
+                guard
+                    !Task.isCancelled,
+                    let self,
+                    self.lastMobileDataShortcutRequest == .turnOff
+                else { return }
+                self.runMobileDataShortcut(.turnOn)
+            }
         }
     }
 
@@ -861,11 +986,20 @@ final class LocalDeviceSessionCoordinator: NSObject {
         mobileDataDiscoveryLoopTask = nil
         localDevVPNReturnTimeout?.cancel()
         localDevVPNReturnTimeout = nil
+        vpnWaitDiscoveryTask?.cancel()
+        vpnWaitDiscoveryTask = nil
+        localNetworkRetryTask?.cancel()
+        localNetworkRetryTask = nil
+        localNetworkRetryCount = 0
+        awaitingLocalNetworkRetry = false
+        mobileDataShortcutRetryTask?.cancel()
+        mobileDataShortcutRetryTask = nil
         cleanupDiscovery()
         pendingSession = nil
         resolvedService = nil
         hasRequestedLocalDevVPNThisAttempt = false
         isMobileDataStartupMode = false
+        restoreMobileDataIfNeeded()
     }
 
     private func finishCancelledLocationSession() {
@@ -930,7 +1064,79 @@ final class LocalDeviceSessionCoordinator: NSObject {
         cleanupDiscovery()
         phase = .discovering
         mobileDataGuidance = .turnOff
+        runMobileDataShortcut(.turnOff)
         startMobileDataDiscoveryLoop()
+    }
+
+    /// The request goes out as a local notification that a personal automation
+    /// reacts to, so the app never opens the Shortcuts app itself. Posting is
+    /// skipped once the cellular state the request aims for is already
+    /// observed, and a bounded retry keeps re-posting while it is not, because
+    /// notification automations are known to miss individual notifications.
+    private func runMobileDataShortcut(_ request: MobileDataShortcut) {
+        lastMobileDataShortcutRequest = request
+        postMobileDataShortcutIfNeeded(request)
+        startMobileDataShortcutRetry(request)
+    }
+
+    private func postMobileDataShortcutIfNeeded(_ request: MobileDataShortcut) {
+        guard !hasReachedDesiredCellularState(for: request) else { return }
+#if !targetEnvironment(simulator)
+        ShortcutRequestNotifier.shared.post(
+            request == .turnOff ? .turnOffMobileData : .turnOnMobileData
+        )
+#endif
+    }
+
+    /// A request counts as satisfied only against an observed cellular path,
+    /// never the unsatisfied default before the monitor has reported.
+    private func hasReachedDesiredCellularState(for request: MobileDataShortcut) -> Bool {
+        switch request {
+        case .turnOff:
+            !isCellularPathSatisfied && sawCellularPathUnavailable
+        case .turnOn:
+            isCellularPathSatisfied
+        }
+    }
+
+    private func startMobileDataShortcutRetry(_ request: MobileDataShortcut) {
+        mobileDataShortcutRetryTask?.cancel()
+        mobileDataShortcutRetryTask = Task { @MainActor [weak self] in
+            for _ in 0..<Self.mobileDataShortcutRetryLimit {
+                try? await Task.sleep(for: .seconds(Self.mobileDataShortcutRetryDelay))
+                guard !Task.isCancelled, let self else { return }
+                guard self.lastMobileDataShortcutRequest == request else { return }
+                guard !self.hasReachedDesiredCellularState(for: request) else { return }
+                self.postMobileDataShortcutIfNeeded(request)
+            }
+        }
+    }
+
+    /// Mobile data may only be turned back on if this app turned it off; the
+    /// user's own settings are never touched otherwise. A turn-on that never
+    /// landed is re-requested, since the state is still observably off.
+    private func restoreMobileDataIfNeeded() {
+        switch lastMobileDataShortcutRequest {
+        case .turnOff:
+            runMobileDataShortcut(.turnOn)
+        case .turnOn where !isCellularPathSatisfied:
+            runMobileDataShortcut(.turnOn)
+        case .turnOn, nil:
+            break
+        }
+    }
+
+    /// The TurnOnData shortcut has done its work once the cellular path is
+    /// usable again, so the turn-back-on prompt can close itself.
+    private func considerAutoDismissingMobileDataGuidance() {
+        guard
+            mobileDataGuidance == .turnBackOn,
+            lastMobileDataShortcutRequest == .turnOn,
+            isCellularPathSatisfied,
+            sawCellularPathUnavailable
+        else { return }
+        mobileDataGuidance = nil
+        onMobileDataGuidanceAutoDismissed?()
     }
 
     private func startMobileDataDiscoveryLoop() {
@@ -959,6 +1165,30 @@ final class LocalDeviceSessionCoordinator: NSObject {
         }
     }
 
+    /// The mobile-data flow used to advance only once the user came back to
+    /// this app after the tunnel request. Notification automations keep the
+    /// app in the foreground, so hand over to the guidance on a timer. The
+    /// timer skips while the app is not active, which keeps the legacy
+    /// return-to-app flow covered by appDidBecomeActive.
+    private func startMobileDataGuidanceHandoff() {
+        automaticDiscoveryTask?.cancel()
+        automaticDiscoveryTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(1500))
+            guard
+                !Task.isCancelled,
+                let self,
+                self.pendingSession != nil,
+                !self.workerIsRunning,
+                self.isMobileDataStartupMode,
+                self.mobileDataGuidance == nil,
+                self.phase == .openingLocalDevVPN || self.phase == .discovering,
+                UIApplication.shared.applicationState == .active
+            else { return }
+            self.automaticDiscoveryTask = nil
+            self.enterMobileDataGuidance()
+        }
+    }
+
     private func openLocalDevVPNForPendingSession() {
 #if !targetEnvironment(simulator)
         guard pendingSession != nil, !workerIsRunning else { return }
@@ -966,14 +1196,65 @@ final class LocalDeviceSessionCoordinator: NSObject {
         mobileDataGuidance = nil
         hasRequestedLocalDevVPNThisAttempt = true
         phase = .openingLocalDevVPN
-
-        UIApplication.shared.open(Self.enableURL) { [weak self] opened in
-            guard !opened else { return }
-            Task { @MainActor in
-                self?.fail("Install LocalDevVPN before starting a location session.")
-            }
+        openLocalDevVPNShortcut()
+        if isMobileDataStartupMode {
+            startMobileDataGuidanceHandoff()
+        } else {
+            startVPNWaitDiscoveryLoop()
         }
 #endif
+    }
+
+    private func openLocalDevVPNShortcut() {
+#if !targetEnvironment(simulator)
+        ShortcutRequestNotifier.shared.post(.openLocalDevVPN)
+#endif
+    }
+
+    /// Notification-driven automations can start the tunnel without ever
+    /// backgrounding this app, so keep searching instead of waiting for a
+    /// return-to-app signal. Mirrors startMobileDataDiscoveryLoop; the
+    /// restart limit hands over to the standard connection-help escalation
+    /// when the tunnel never comes up.
+    private func startVPNWaitDiscoveryLoop() {
+        guard !isMobileDataStartupMode else { return }
+        vpnWaitDiscoveryTask?.cancel()
+        vpnWaitDiscoveryTask = Task { @MainActor [weak self] in
+            var restarts = 0
+            var lastRestartAt = Date.distantPast
+            while !Task.isCancelled {
+                guard
+                    let self,
+                    self.pendingSession != nil,
+                    !self.workerIsRunning,
+                    self.hasRequestedLocalDevVPNThisAttempt,
+                    !self.isMobileDataStartupMode,
+                    !self.vpnReturnRetryUsed,
+                    self.resolvedService == nil,
+                    self.phase == .openingLocalDevVPN || self.phase == .discovering
+                else { return }
+
+                // Re-arm only after a genuine stall: a resolve, probe or
+                // escalation already in flight owns the flow, and restarting
+                // mid-flight would tear down the very discovery being waited
+                // on. Discovery that found something is left alone entirely.
+                let stalled = self.discoveredServices.isEmpty
+                    && self.serviceProbeConnection == nil
+                    && self.serviceProbeRetryTask == nil
+                    && self.mobileDataGuidanceDelay == nil
+                    && self.discoveryTimeout == nil
+                if stalled, Date.now.timeIntervalSince(lastRestartAt) >= Self.localDevVPNWaitStallInterval {
+                    restarts += 1
+                    if restarts > Self.localDevVPNWaitRestartLimit {
+                        self.showConnectionHelp()
+                        return
+                    }
+                    self.beginDiscovery(reportTimeout: false)
+                    lastRestartAt = .now
+                }
+                try? await Task.sleep(for: .seconds(Self.localDevVPNWaitTickInterval))
+            }
+        }
     }
 
 }
@@ -994,7 +1275,7 @@ extension LocalDeviceSessionCoordinator: NetServiceBrowserDelegate, NetServiceDe
         didNotSearch errorDict: [String: NSNumber]
     ) {
         MainActor.assumeIsolated {
-            fail("Local Network access is required to find this iPhone.")
+            handleSearchFailure()
         }
     }
 

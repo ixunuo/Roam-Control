@@ -60,7 +60,7 @@ struct UsageStatisticsPrivacyView: View {
     }
 
     private func privacyRow(_ title: String, symbol: String) -> some View {
-        Label(title, systemImage: symbol)
+        Label(LocalizedText.text(title), systemImage: symbol)
     }
 }
 

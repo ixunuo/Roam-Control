@@ -117,8 +117,10 @@ struct OnboardingView: View {
     }
 
     private var finalButtonTitle: String {
-        if !isLastPage { return "Continue" }
-        return isReplay ? "Done" : "Set Up This iPhone"
+        if !isLastPage { return LocalizedText.text("Continue") }
+        return isReplay
+            ? LocalizedText.text("Done")
+            : LocalizedText.text("Set Up This iPhone")
     }
 
     private var finalButtonSymbol: String {
@@ -241,26 +243,26 @@ private struct OnboardingPage {
     static let pages: [OnboardingPage] = [
         OnboardingPage(
             symbol: "location.viewfinder",
-            title: "Welcome to Roam Control",
-            message: "Choose where your iPhone should appear, from one simple map.",
+            title: LocalizedText.text("Welcome to Roam Control"),
+            message: LocalizedText.text("Choose where your iPhone should appear, from one simple map."),
             colors: [.blue, .cyan]
         ),
         OnboardingPage(
             symbol: "map.fill",
-            title: "Pick any place",
-            message: "Search for a destination or tap the map, then save it as your target.",
+            title: LocalizedText.text("Pick any place"),
+            message: LocalizedText.text("Search for a destination or tap the map, then save it as your target."),
             colors: [.indigo, .blue]
         ),
         OnboardingPage(
             symbol: "iphone.and.arrow.forward",
-            title: "Pair this iPhone once",
-            message: "Roam Control needs one private pairing before it can control location. We'll guide you through it next.",
+            title: LocalizedText.text("Pair this iPhone once"),
+            message: LocalizedText.text("Roam Control needs one private pairing before it can control location. We'll guide you through it next."),
             colors: [.green, .teal]
         ),
         OnboardingPage(
             symbol: "hand.raised.fill",
-            title: "Private by design",
-            message: "Choose whether to help improve Roam Control with anonymous activity counts. Sharing starts only if you switch it on and can be changed later in Settings.",
+            title: LocalizedText.text("Private by design"),
+            message: LocalizedText.text("Choose whether to help improve Roam Control with anonymous activity counts. Sharing starts only if you switch it on and can be changed later in Settings."),
             colors: [.indigo, .purple],
             showsUsageStatisticsControl: true
         )

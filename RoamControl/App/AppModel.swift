@@ -12,6 +12,7 @@ final class AppModel {
     private static let mapDisplayStyleKey = "mapDisplayStyle"
     private static let activeSessionRecoveryKey = "activeSessionRecovery"
     private static let anonymousUsageStatisticsKey = "sharesAnonymousUsageStatistics"
+    private static let correctsMainlandChinaCoordinatesKey = "correctsMainlandChinaCoordinates"
 
     private let preferences: UserDefaults
 
@@ -25,7 +26,9 @@ final class AppModel {
     private(set) var locationHistory: [LocationTarget]
     private(set) var appearance: AppAppearance
     private(set) var mapDisplayStyle: MapDisplayStyle
+    private(set) var appLanguage: AppLanguage
     private(set) var sharesAnonymousUsageStatistics: Bool
+    private(set) var correctsMainlandChinaCoordinates: Bool
     private(set) var interruptedSession: SessionRecoveryRecord?
     private(set) var isRestoringInterruptedSession = false
     private(set) var interruptedSessionError: String?
@@ -63,10 +66,19 @@ final class AppModel {
         self.mapDisplayStyle = MapDisplayStyle(
             rawValue: preferences.string(forKey: Self.mapDisplayStyleKey) ?? ""
         ) ?? .standard
+        self.appLanguage = AppLanguage(
+            rawValue: preferences.string(forKey: AppLanguage.defaultsKey) ?? ""
+        ) ?? .system
         self.sharesAnonymousUsageStatistics = Self.initialUsageStatisticsPreference(
             in: preferences
         )
+        self.correctsMainlandChinaCoordinates = Self.initialChinaCoordinateCorrectionPreference(
+            in: preferences
+        )
         self.interruptedSession = Self.recoveryRecord(in: preferences)
+
+        deviceSession.correctsMainlandChinaCoordinates = correctsMainlandChinaCoordinates
+        ShortcutRequestNotifier.shared.register()
 
         onDevicePairing.onFailure = { [weak self] diagnostic in
             guard let self else { return }
@@ -110,6 +122,14 @@ final class AppModel {
         }
         deviceSession.onPhaseChange = { [weak self] phase in
             self?.applyDeviceSessionPhase(phase)
+        }
+        deviceSession.onMobileDataGuidanceAutoDismissed = { [weak self] in
+            guard
+                let self,
+                self.isRestoringInterruptedSession,
+                self.restorationReachedActiveSession
+            else { return }
+            self.completeInterruptedSessionRestorationAfterMobileData()
         }
         onDevicePairing.onPhaseChange = { [weak self] phase in
             guard case .failed = phase else { return }
@@ -204,6 +224,19 @@ final class AppModel {
         preferences.set(style.rawValue, forKey: Self.mapDisplayStyleKey)
     }
 
+    /// The new language takes effect the next time the app launches.
+    func setAppLanguage(_ language: AppLanguage) {
+        appLanguage = language
+        preferences.set(language.rawValue, forKey: AppLanguage.defaultsKey)
+        language.apply(to: preferences)
+    }
+
+    func setCorrectsMainlandChinaCoordinates(_ enabled: Bool) {
+        correctsMainlandChinaCoordinates = enabled
+        preferences.set(enabled, forKey: Self.correctsMainlandChinaCoordinatesKey)
+        deviceSession.correctsMainlandChinaCoordinates = enabled
+    }
+
     func setSharesAnonymousUsageStatistics(_ enabled: Bool) {
         sharesAnonymousUsageStatistics = enabled
         preferences.set(enabled, forKey: Self.anonymousUsageStatisticsKey)
@@ -250,7 +283,11 @@ final class AppModel {
         locationHistory = []
         appearance = .automatic
         mapDisplayStyle = .standard
+        appLanguage = .system
+        AppLanguage.system.apply(to: preferences)
         sharesAnonymousUsageStatistics = false
+        correctsMainlandChinaCoordinates = true
+        deviceSession.correctsMainlandChinaCoordinates = true
         interruptedSession = nil
         activeSessionRecovery = nil
         isRestoringInterruptedSession = false
@@ -626,6 +663,18 @@ final class AppModel {
             let recovery = try? JSONDecoder().decode(SessionRecoveryRecord.self, from: data)
         else { return nil }
         return recovery
+    }
+
+    private static func initialChinaCoordinateCorrectionPreference(
+        in preferences: UserDefaults
+    ) -> Bool {
+        if preferences.object(forKey: Self.correctsMainlandChinaCoordinatesKey) != nil {
+            return preferences.bool(forKey: Self.correctsMainlandChinaCoordinatesKey)
+        }
+
+        // Coordinates taken from the map are only usable on a device once the
+        // mainland China shift has been removed, so this starts switched on.
+        return true
     }
 
     private static func initialUsageStatisticsPreference(

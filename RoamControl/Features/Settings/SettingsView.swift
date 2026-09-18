@@ -14,6 +14,7 @@ struct SettingsView: View {
     @State private var isShowingDeviceSetup = false
     @State private var isReplayingOnboarding = false
     @State private var isConfirmingReset = false
+    @State private var isConfirmingLanguageRestart = false
     @State private var resetError: String?
     @State private var releaseUpdateStatus: ReleaseUpdateStatus = .idle
 
@@ -38,7 +39,20 @@ struct SettingsView: View {
                     .padding(.vertical, 4)
                 }
 
-                Section("Device") {
+                Section {
+                    Picker("Language", selection: languageBinding) {
+                        ForEach(AppLanguage.allCases) { language in
+                            Text(language.title).tag(language)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                } header: {
+                    Text("Language")
+                } footer: {
+                    Text("Roam Control uses the language set on this iPhone unless you choose one here. Changing the language takes effect after the app restarts.")
+                }
+
+                Section {
                     NavigationLink {
                         ConnectionHealthView()
                             .environment(appModel)
@@ -56,6 +70,15 @@ struct SettingsView: View {
                         }
                     }
                     .foregroundStyle(.primary)
+
+                    Toggle(
+                        "Correct Mainland China Coordinates",
+                        isOn: chinaCoordinateCorrectionBinding
+                    )
+                } header: {
+                    Text("Device")
+                } footer: {
+                    Text("Apple Maps in mainland China uses shifted (GCJ-02) coordinates. Roam Control converts them back to WGS-84 before they are sent to this iPhone, so the simulated position matches the place you chose. Turn this off to send coordinates exactly as they are.")
                 }
 
                 Section {
@@ -164,18 +187,40 @@ struct SettingsView: View {
                 resetError = nil
             }
         } message: {
-            Text(resetError ?? "Please try again.")
+            Text(LocalizedText.text(resetError ?? "Please try again."))
+        }
+        .alert("Restart to Change Language?", isPresented: $isConfirmingLanguageRestart) {
+            Button("Restart Now") {
+                restartApp()
+            }
+            Button("Later", role: .cancel) {}
+        } message: {
+            Text("Roam Control will use the new language the next time it opens.")
         }
     }
 
     private var connectionLabel: String {
         switch appModel.connectionState {
-        case .notConfigured: "Not paired"
-        case .ready: "Ready"
-        case .connecting: "Connecting"
-        case .active: "Active"
-        case .failed: "Problem"
+        case .notConfigured: LocalizedText.text("Not paired")
+        case .ready: LocalizedText.text("Ready")
+        case .connecting: LocalizedText.text("Connecting")
+        case .active: LocalizedText.text("Active")
+        case .failed: LocalizedText.text("Problem")
         }
+    }
+
+    private var languageBinding: Binding<AppLanguage> {
+        Binding(
+            get: { appModel.appLanguage },
+            set: { language in
+                guard language != appModel.appLanguage else { return }
+                let previousCode = appModel.appLanguage.resolvedLanguageCode()
+                appModel.setAppLanguage(language)
+                if language.resolvedLanguageCode() != previousCode {
+                    isConfirmingLanguageRestart = true
+                }
+            }
+        )
     }
 
     private var preferredColorScheme: ColorScheme? {
@@ -272,6 +317,13 @@ struct SettingsView: View {
         )
     }
 
+    private var chinaCoordinateCorrectionBinding: Binding<Bool> {
+        Binding(
+            get: { appModel.correctsMainlandChinaCoordinates },
+            set: appModel.setCorrectsMainlandChinaCoordinates
+        )
+    }
+
     private var versionText: String {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
         return version ?? "1.0"
@@ -279,7 +331,7 @@ struct SettingsView: View {
 
     private var buildNumberText: String {
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
-        return build ?? "Unknown"
+        return build ?? LocalizedText.text("Unknown")
     }
 
     private var buildDateText: String {
@@ -296,15 +348,15 @@ struct SettingsView: View {
             let executableURL = Bundle.main.executableURL,
             let values = try? executableURL.resourceValues(forKeys: [.contentModificationDateKey]),
             let buildDate = values.contentModificationDate
-        else { return "Unknown" }
+        else { return LocalizedText.text("Unknown") }
 
         return buildDate.formatted(date: .abbreviated, time: .shortened)
     }
 
     private var updateCheckTitle: String {
         switch releaseUpdateStatus {
-        case .checking: "Checking for Updates…"
-        default: "Check for Updates"
+        case .checking: LocalizedText.text("Checking for Updates…")
+        default: LocalizedText.text("Check for Updates")
         }
     }
 
@@ -381,6 +433,10 @@ struct SettingsView: View {
         } catch {
             resetError = error.localizedDescription
         }
+    }
+
+    private func restartApp() {
+        exit(0)
     }
 }
 

@@ -34,13 +34,13 @@ struct ConnectionHealthView: View {
             }
 
             Section("Restoration") {
-                Text(appModel.deviceSession.restorationStatus)
+                Text(LocalizedText.text(appModel.deviceSession.restorationStatus))
                 Text("An inactive session means Roam Control's worker has ended. Other apps may need time to acquire a fresh real location.")
                     .foregroundStyle(.secondary)
             }
 
             Section("Current Location") {
-                LabeledContent("Place", value: activeTarget?.name ?? "None")
+                LabeledContent("Place", value: activeTarget?.name ?? LocalizedText.text("None"))
                 LabeledContent("Coordinates", value: coordinatesValue)
 
                 if let activeTarget, !activeTarget.subtitle.isEmpty {
@@ -63,7 +63,7 @@ struct ConnectionHealthView: View {
                 .disabled(diagnostics.state == .running)
 
                 if let resultMessage {
-                    Label(resultMessage, systemImage: resultSymbol)
+                    Label(LocalizedText.text(resultMessage), systemImage: resultSymbol)
                         .font(.subheadline)
                         .foregroundStyle(resultColor)
                 }
@@ -88,7 +88,7 @@ struct ConnectionHealthView: View {
                     didCopyDiagnostics = true
                 } label: {
                     Label(
-                        didCopyDiagnostics ? "Diagnostics Copied" : "Copy Diagnostics",
+                        LocalizedText.text(didCopyDiagnostics ? "Diagnostics Copied" : "Copy Diagnostics"),
                         systemImage: didCopyDiagnostics ? "checkmark" : "doc.on.doc"
                     )
                 }
@@ -137,17 +137,17 @@ struct ConnectionHealthView: View {
     }
 
     private var coordinatesValue: String {
-        guard let activeTarget else { return "None" }
+        guard let activeTarget else { return LocalizedText.text("None") }
         return String(format: "%.5f, %.5f", activeTarget.latitude, activeTarget.longitude)
     }
 
     private var pairingValue: String {
         switch appModel.pairingStatus {
-        case .checking: "Checking"
-        case .importing: "Importing"
-        case .notPaired: "Not paired"
-        case .paired: "Ready"
-        case .failed: "Problem"
+        case .checking: LocalizedText.text("Checking")
+        case .importing: LocalizedText.text("Importing")
+        case .notPaired: LocalizedText.text("Not paired")
+        case .paired: LocalizedText.text("Ready")
+        case .failed: LocalizedText.text("Problem")
         }
     }
 
@@ -172,11 +172,11 @@ struct ConnectionHealthView: View {
     private var localDevVPNValue: String {
         switch diagnostics.state {
         case .notRun:
-            if case .active = appModel.deviceSession.phase { return "Connected" }
-            return "Not checked"
-        case .running: return "Checking"
-        case .passed: return "Reachable"
-        case .failed: return "Not reachable"
+            if case .active = appModel.deviceSession.phase { return LocalizedText.text("Connected") }
+            return LocalizedText.text("Not checked")
+        case .running: return LocalizedText.text("Checking")
+        case .passed: return LocalizedText.text("Reachable")
+        case .failed: return LocalizedText.text("Not reachable")
         }
     }
 
@@ -204,13 +204,13 @@ struct ConnectionHealthView: View {
 
     private var sessionValue: String {
         switch appModel.deviceSession.phase {
-        case .idle: "Inactive"
-        case .openingLocalDevVPN: "Opening LocalDevVPN"
-        case .discovering: "Finding this iPhone"
-        case .connecting: "Connecting"
-        case .active: "Active"
-        case .stopping: "Stopping"
-        case .failed: "Failed"
+        case .idle: LocalizedText.text("Inactive")
+        case .openingLocalDevVPN: LocalizedText.text("Opening LocalDevVPN")
+        case .discovering: LocalizedText.text("Finding this iPhone")
+        case .connecting: LocalizedText.text("Connecting")
+        case .active: LocalizedText.text("Active")
+        case .stopping: LocalizedText.text("Stopping")
+        case .failed: LocalizedText.text("Failed")
         }
     }
 
@@ -236,7 +236,7 @@ struct ConnectionHealthView: View {
     private var resultMessage: String? {
         switch diagnostics.state {
         case .notRun, .running: nil
-        case .passed(let message), .failed(let message): message
+        case .passed(let message), .failed(let message): LocalizedText.text(message)
         }
     }
 
@@ -269,7 +269,7 @@ struct ConnectionHealthView: View {
                         .foregroundStyle(color)
                         .frame(width: 22)
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(title)
+                        Text(LocalizedText.text(title))
                         Text(value)
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
@@ -280,7 +280,7 @@ struct ConnectionHealthView: View {
                     Image(systemName: symbol)
                         .foregroundStyle(color)
                         .frame(width: 22)
-                    Text(title)
+                    Text(LocalizedText.text(title))
                     Spacer()
                     Text(value)
                         .foregroundStyle(.secondary)
@@ -288,7 +288,7 @@ struct ConnectionHealthView: View {
             }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(title), \(value)")
+        .accessibilityLabel(LocalizedText.format("%@, %@", LocalizedText.text(title), value))
     }
 
     @MainActor

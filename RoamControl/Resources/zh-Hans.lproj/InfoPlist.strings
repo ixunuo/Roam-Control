@@ -1,0 +1,4 @@
+/* Simplified Chinese (zh-Hans) localization for Roam Control's Info.plist strings. */
+
+"NSLocalNetworkUsageDescription" = "Roam Control 使用本地网络，通过 LocalDevVPN 安全地配对并控制这台 iPhone。";
+"NSLocationWhenInUseUsageDescription" = "Roam Control 使用定位更新，让固定和步行会话在后台持续运行，并在会话停止后重新定位到你的真实位置。";

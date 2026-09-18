@@ -111,7 +111,7 @@ struct SessionRecoveryView: View {
             if isResuming || isRestoring {
                 HStack(spacing: 10) {
                     ProgressView()
-                    Text(isRestoring ? "Restoring this iPhone's real location…" : "Preparing the route…")
+                    Text(LocalizedText.text(isRestoring ? "Restoring this iPhone's real location…" : "Preparing the route…"))
                         .font(.subheadline.weight(.semibold))
                 }
                 .frame(maxWidth: .infinity)
@@ -150,7 +150,7 @@ struct SessionRecoveryView: View {
             }
 
             if let errorMessage {
-                Text(errorMessage)
+                Text(LocalizedText.text(errorMessage))
                     .font(.caption)
                     .foregroundStyle(.red)
                     .multilineTextAlignment(.center)
@@ -167,14 +167,22 @@ struct SessionRecoveryView: View {
 
     private var summaryText: String {
         if let destination = recovery.destination, recovery.isWalkingRoute {
-            return "Roam Control closed before it could confirm that the simulated walk to \(destination.name) ended. Continue from the last saved point or restore this iPhone's real location."
+            return LocalizedText.format(
+                "Roam Control closed before it could confirm that the simulated walk to %@ ended. Continue from the last saved point or restore this iPhone's real location.",
+                destination.name
+            )
         }
 
-        return "Roam Control closed before it could confirm that the simulated location at \(recovery.lastReportedLocation.name) ended. Choose what this iPhone should do next."
+        return LocalizedText.format(
+            "Roam Control closed before it could confirm that the simulated location at %@ ended. Choose what this iPhone should do next.",
+            recovery.lastReportedLocation.name
+        )
     }
 
     private var resumeTitle: String {
-        recovery.isWalkingRoute ? "Resume Walking" : "Resume Location"
+        recovery.isWalkingRoute
+            ? LocalizedText.text("Resume Walking")
+            : LocalizedText.text("Resume Location")
     }
 
     private func recoveryDetail(title: String, value: String, symbol: String) -> some View {
@@ -186,7 +194,7 @@ struct SessionRecoveryView: View {
                         .frame(width: 22)
 
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(title)
+                        Text(LocalizedText.text(title))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         Text(value)
@@ -201,7 +209,7 @@ struct SessionRecoveryView: View {
                         .foregroundStyle(.blue)
                         .frame(width: 22)
 
-                    Text(title)
+                    Text(LocalizedText.text(title))
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
@@ -214,6 +222,6 @@ struct SessionRecoveryView: View {
             }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(title), \(value)")
+        .accessibilityLabel(LocalizedText.format("%@, %@", LocalizedText.text(title), value))
     }
 }

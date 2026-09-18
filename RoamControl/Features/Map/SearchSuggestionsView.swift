@@ -48,7 +48,7 @@ struct SearchSuggestionsView: View {
     }
 
     private func accessibilityLabel(for suggestion: MapSearchSuggestion) -> String {
-        "\(suggestion.title), \(visibleSubtitle(for: suggestion))"
+        LocalizedText.format("%@, %@", suggestion.title, visibleSubtitle(for: suggestion))
     }
 
     private func visibleSubtitle(for suggestion: MapSearchSuggestion) -> String {
@@ -56,6 +56,6 @@ struct SearchSuggestionsView: View {
             CharacterSet(charactersIn: "\u{200B}\u{200C}\u{200D}\u{FEFF}")
         )
         let detail = suggestion.subtitle.trimmingCharacters(in: invisibleCharacters)
-        return detail.isEmpty ? "Location details unavailable" : detail
+        return detail.isEmpty ? LocalizedText.text("Location details unavailable") : detail
     }
 }

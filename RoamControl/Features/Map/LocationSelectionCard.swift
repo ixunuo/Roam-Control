@@ -78,7 +78,7 @@ struct LocationSelectionCard: View {
                             } else {
                                 Image(systemName: "figure.walk")
                             }
-                            Text(isPreviewingWalkingRoute ? "Planning Walking Route…" : "Preview Walking Route")
+                            Text(LocalizedText.text(isPreviewingWalkingRoute ? "Planning Walking Route…" : "Preview Walking Route"))
                         }
                         .frame(maxWidth: .infinity)
                     }
@@ -88,7 +88,7 @@ struct LocationSelectionCard: View {
                 }
 
                 if let walkingRouteError {
-                    Text(walkingRouteError)
+                    Text(LocalizedText.text(walkingRouteError))
                         .font(.caption)
                         .foregroundStyle(.red)
                         .frame(maxWidth: .infinity, alignment: .center)
@@ -183,7 +183,7 @@ struct LocationSelectionCard: View {
                             .frame(width: 44, height: 44)
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel(didCopyCoordinates ? "Location copied" : "Copy location")
+                    .accessibilityLabel(LocalizedText.text(didCopyCoordinates ? "Location copied" : "Copy location"))
                 }
             }
         }
@@ -198,7 +198,7 @@ struct LocationSelectionCard: View {
                 .frame(width: 44, height: 44)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(isFavourite ? "Remove from favourites" : "Add to favourites")
+        .accessibilityLabel(LocalizedText.text(isFavourite ? "Remove from favourites" : "Add to favourites"))
 
         if canClearSelection {
             Button(action: onClearSelection) {
@@ -282,19 +282,21 @@ struct LocationSelectionCard: View {
     private var primaryTitle: String {
         switch sessionPhase {
         case .openingLocalDevVPN:
-            "Opening LocalDevVPN…"
+            LocalizedText.text("Opening LocalDevVPN…")
         case .discovering:
-            "Finding This iPhone…"
+            LocalizedText.text("Finding This iPhone…")
         case .connecting:
-            "Starting Location…"
+            LocalizedText.text("Starting Location…")
         case .active:
-            isShowingActiveTarget ? "Stop & Restore" : "Update Location"
+            isShowingActiveTarget
+                ? LocalizedText.text("Stop & Restore")
+                : LocalizedText.text("Update Location")
         case .stopping:
-            "Restoring Real Location…"
+            LocalizedText.text("Restoring Real Location…")
         case .failed:
-            "Try Again"
+            LocalizedText.text("Try Again")
         case .idle:
-            "Start Location"
+            LocalizedText.text("Start Location")
         }
     }
 
@@ -333,23 +335,30 @@ struct LocationSelectionCard: View {
         switch sessionPhase {
         case .idle:
             return isPaired
-                ? "Start when ready. Stop restores this iPhone's real location."
-                : "Pair this iPhone before starting location control."
+                ? LocalizedText.text("Start when ready. Stop restores this iPhone's real location.")
+                : LocalizedText.text("Pair this iPhone before starting location control.")
         case .openingLocalDevVPN:
-            return "Roam Control will return automatically after the tunnel starts."
+            return LocalizedText.text("Roam Control will return automatically after the tunnel starts.")
         case .discovering:
-            return "Finding the paired iPhone through the private local tunnel."
+            return LocalizedText.text("Finding the paired iPhone through the private local tunnel.")
         case .connecting:
-            return "Opening the secure location session."
+            return LocalizedText.text("Opening the secure location session.")
         case .active(let target):
             if !isShowingActiveTarget, let location {
-                return "Currently using \(target.name). Update to move to \(location.name)."
+                return LocalizedText.format(
+                    "Currently using %@. Update to move to %@.",
+                    target.name,
+                    location.name
+                )
             }
-            return "This iPhone is using \(target.name). Stop & Restore ends the simulation and restores its real location."
+            return LocalizedText.format(
+                "This iPhone is using %@. Stop & Restore ends the simulation and restores its real location.",
+                target.name
+            )
         case .stopping:
-            return "Restoring this iPhone's real location. Keep Roam Control open until this finishes."
+            return LocalizedText.text("Restoring this iPhone's real location. Keep Roam Control open until this finishes.")
         case .failed(let message):
-            return message
+            return LocalizedText.text(message)
         }
     }
 

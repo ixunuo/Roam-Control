@@ -35,7 +35,7 @@ struct SavedPlacesView: View {
                     if favourites.isEmpty {
                         EmptySavedPlacesRow(
                             symbol: "heart",
-                            message: "Tap the heart on any selected place to save it."
+                            message: LocalizedText.text("Tap the heart on any selected place to save it.")
                         )
                     } else {
                         ForEach(favourites) { location in
@@ -84,7 +84,7 @@ struct SavedPlacesView: View {
                     if history.isEmpty {
                         EmptySavedPlacesRow(
                             symbol: "clock",
-                            message: "Places you use will appear here."
+                            message: LocalizedText.text("Places you use will appear here.")
                         )
                     } else {
                         ForEach(history) { location in
@@ -123,7 +123,7 @@ struct SavedPlacesView: View {
             .toolbar {
                 if !favourites.isEmpty {
                     ToolbarItem(placement: .topBarLeading) {
-                        Button(editMode.isEditing ? "Done" : "Edit") {
+                        Button(LocalizedText.text(editMode.isEditing ? "Done" : "Edit")) {
                             if !editMode.isEditing {
                                 onDismissFavouriteReorderHint()
                             }
@@ -188,25 +188,25 @@ struct SavedPlacesView: View {
 
     private var clearConfirmationTitle: String {
         switch clearTarget {
-        case .favourites: "Clear all favourites?"
-        case .history: "Clear location history?"
-        case nil: "Clear saved places?"
+        case .favourites: LocalizedText.text("Clear all favourites?")
+        case .history: LocalizedText.text("Clear location history?")
+        case nil: LocalizedText.text("Clear saved places?")
         }
     }
 
     private var clearConfirmationButton: String {
         switch clearTarget {
-        case .favourites: "Clear Favourites"
-        case .history: "Clear History"
-        case nil: "Clear"
+        case .favourites: LocalizedText.text("Clear Favourites")
+        case .history: LocalizedText.text("Clear History")
+        case nil: LocalizedText.text("Clear")
         }
     }
 
     private var clearConfirmationMessage: String {
         switch clearTarget {
-        case .favourites: "Every favourite will be removed. Your history will be kept."
-        case .history: "Every recently used location will be removed. Your favourites will be kept."
-        case nil: "This cannot be undone."
+        case .favourites: LocalizedText.text("Every favourite will be removed. Your history will be kept.")
+        case .history: LocalizedText.text("Every recently used location will be removed. Your favourites will be kept.")
+        case nil: LocalizedText.text("This cannot be undone.")
         }
     }
 
@@ -263,13 +263,13 @@ private struct SavedPlaceRow: View {
                     .frame(width: 44, height: 44)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(isFavourite ? "Remove from favourites" : "Add to favourites")
+            .accessibilityLabel(LocalizedText.text(isFavourite ? "Remove from favourites" : "Add to favourites"))
         }
     }
 
     private var locationAccessibilityLabel: String {
         guard !location.subtitle.isEmpty else { return location.name }
-        return "\(location.name), \(location.subtitle)"
+        return LocalizedText.format("%@, %@", location.name, location.subtitle)
     }
 }
 
